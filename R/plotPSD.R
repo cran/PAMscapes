@@ -13,7 +13,7 @@
 #'   to spend time adjusting plot settings.
 #'
 #'   The output of \code{prepPSDData} is a list with 5 elements:
-#'   \itemize{
+#'   \describe{
 #'      \item{frequency}{ - the frequency values of the input data}
 #'      \item{freqRange}{ - the value of the "freqRange" parameter if
 #'        it was supplied}
@@ -41,6 +41,8 @@
 #' @param dbInt bin interval size for density plot
 #' @param units units for dB axis of plot
 #' @param cmap color map to use for density plot
+#' @param by optional column to plot different quantile lines by, only affects
+#'   \code{style='quantile'}
 #' @param title optional title for plot
 #' @param progress logical flag to show progress bar
 #'
@@ -56,6 +58,7 @@
 #' plotPSD(psd[1:1000], style='quantile', q=.05)
 #'
 #' @importFrom graphics hist
+#' @importFrom scales hue_pal
 #'
 #' @export
 #'
@@ -66,9 +69,56 @@ plotPSD <- function(x, style=c('quantile', 'density'),
                     dbRange=NULL, dbInt=1,
                     units='dB re: 1uPa^2/Hz',
                     cmap=viridis_pal()(25),
+                    by=NULL,
                     title=NULL,
                     progress=TRUE) {
     scale <- match.arg(scale)
+    if(!is.null(dbRange) &&
+       length(dbRange) > 2) {
+        dbRange <- range(dbRange, na.rm=TRUE)
+    }
+    if(!is.null(by) &&
+       is.data.frame(x) &&
+       by %in% colnames(x)) {
+        if('density' %in% style) {
+            warning('Plots with "by" can only show quantile, not density')
+        }
+        split <- split(x, x[[by]])
+        if(is.character(color) &&
+           length(color) < length(split)) {
+            warning('Not enough colors supplied for levels of "by", defaulting to "scales::hue_pal"')
+            color <- hue_pal()
+        }
+        if(is.function(color)) {
+            color <- color(length(split))
+        }
+        # if(length(color) == 1) {
+        #     color <- rep(color, length(split))
+        # }
+        # only works for quantile plots
+        plots <- lapply(seq_along(split), function(s) {
+            # checkSoundscapeInput doesnt like extra columns
+            thisData <- split[[s]]
+            thisData[[by]] <- NULL
+            plotPSD(thisData, style='quantile', scale=scale, q=q, color=color[s],
+                    freqRange=freqRange, dbRange=dbRange, dbInt=dbInt,
+                    units=units, cmap=cmap, by=by, title=title, progress=progress)
+        })
+        result <- plots[[1]]
+        if(length(plots) == 1) {
+            return(result)
+        }
+        for(i in 2:length(plots)) {
+            result$layers <- c(result$layers, plots[[i]]$layers)
+        }
+        result <- result +
+            scale_color_manual(values=color, labels=names(split), breaks=color, name=by) +
+            scale_fill_manual(values=color, labels=names(split), breaks=color) +
+            guides(fill='none')
+        return(result)
+    }
+
+
     plotData <- prepPSDData(x, freqRange=freqRange, style=style, dbInt=dbInt, progress=progress)
     g <- ggplot()
     if('density' %in% style) {
@@ -82,26 +132,45 @@ plotPSD <- function(x, style=c('quantile', 'density'),
                           ymin=.data$dbLow,
                           ymax=.data$dbHigh,
                           fill=.data$count)) +
-            scale_fill_gradientn(colors=cmap, na.value = 'transparent')
+            scale_fill_gradientn(colors=cmap, na.value = 'transparent') +
+            labs(fill='Density')
     }
     if('quantile' %in% style) {
         plotQuant <- formatQuantileData(plotData,
                                         q=q,
                                         freqRange=freqRange,
                                         scale=scale)
-        g <- g +
-            geom_line(
-                data=plotQuant,
-                aes(x=.data$frequency, y=.data$qmed), color=color, lwd=1) +
-            geom_ribbon(
-                data=plotQuant,
-                aes(x=.data$frequency, ymin=.data$qlow, ymax=.data$qhigh), fill=color, alpha=.1)
+        # g <- g +
+        #     geom_line(
+        #         data=plotQuant,
+        #         aes(x=.data$frequency, y=.data$qmed, color=color), lwd=1)
+        if(!is.null(by)) {
+            g <- g +
+                geom_line(
+                    data=plotQuant,
+                    aes(x=.data$frequency, y=.data$qmed, color=color), lwd=1) +
+                geom_ribbon(
+                    data=plotQuant,
+                    aes(x=.data$frequency, ymin=.data$qlow, ymax=.data$qhigh, fill=color), alpha=.1)
+        }
+        if(is.null(by)) {
+            g <- g +
+                geom_line(
+                    data=plotQuant,
+                    aes(x=.data$frequency, y=.data$qmed), color=color, lwd=1) +
+                geom_ribbon(
+                    data=plotQuant,
+                    aes(x=.data$frequency, ymin=.data$qlow, ymax=.data$qhigh), fill=color, alpha=.1)
+            # scale_color_manual(values=color) +
+            # scale_fill_manual(values=color) +
+            # guides(color='none', fill='none')
+        }
     }
 
     g <- g +
         scale_y_continuous(expand=c(0, 0), limits=dbRange) +
         ggtitle(title) +
-        labs(x='Frequency (Hz)', color='Quantile', fill='Density', y=units)
+        labs(x='Frequency (Hz)', color='Quantile', y=units)
     if(is.null(freqRange)) {
         freqRange <- range(plotData$frequency)
         if('density' %in% style) {
@@ -154,12 +223,15 @@ prepPSDData <- function(x, freqRange=NULL, style=c('density', 'quantile'),
         if(isLong(data)) {
             data <- toWide(data)
         }
-        freqs <- as.numeric(gsub('[A-z]+_', '', colnames(data)[2:ncol(data)]))
+        freqCols <- whichFreqCols(data)
+        freqs <- as.numeric(gsub('[A-z]+_', '', colnames(data)[freqCols]))
+        data <- data[c(1, freqCols)]
         if(!is.null(freqRange)) {
             goodFreqs <- freqs >= freqRange[1] & freqs <= freqRange[2]
             goodIx <- 1 + which(goodFreqs)
             data <- data[c(1, goodIx)]
-            freqs <- as.numeric(gsub('[A-z]+_', '', colnames(data)[2:ncol(data)]))
+            freqCols <- whichFreqCols(data)
+            freqs <- as.numeric(gsub('[A-z]+_', '', colnames(data)[freqCols]))
         }
         # checking compatibility of all file freq vals
         if(f == 1) {

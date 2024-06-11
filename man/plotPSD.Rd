@@ -16,6 +16,7 @@ plotPSD(
   dbInt = 1,
   units = "dB re: 1uPa^2/Hz",
   cmap = viridis_pal()(25),
+  by = NULL,
   title = NULL,
   progress = TRUE
 )
@@ -51,6 +52,9 @@ of file paths, or the output from \code{prepPSDData}}
 
 \item{cmap}{color map to use for density plot}
 
+\item{by}{optional column to plot different quantile lines by, only affects
+\code{style='quantile'}}
+
 \item{title}{optional title for plot}
 
 \item{progress}{logical flag to show progress bar}
@@ -73,7 +77,7 @@ it may be useful to load the data first, then it is easier
 to spend time adjusting plot settings.
 
 The output of \code{prepPSDData} is a list with 5 elements:
-\itemize{
+\describe{
 \item{frequency}{ - the frequency values of the input data}
 \item{freqRange}{ - the value of the "freqRange" parameter if
 it was supplied}

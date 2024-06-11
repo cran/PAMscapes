@@ -3,16 +3,20 @@
 #' @description Downloads and matches wind and precipitation data
 #'   from the Global Forecast System (GFS) weather model. Data is
 #'   downloaded from the National Center for Atmospheric Research
-#'   data server \url{https://rda.ucar.edu/datasets/ds084.1/}
+#'   data server \url{https://rda.ucar.edu/datasets/ds084.1/}.
+#'   The particular GFS dataset downloaded is the closest "forecast"
+#'   dataset to the particular time (e.g. .f000 or .f003)
 #'
 #' @param x a dataframe with columns \code{UTC}, \code{Latitude} and
 #'   \code{Longitude} to add environmental data to
 #'
-#' @return a dataframe with wind and precipitation rate columns added
+#' @return a dataframe with wind (m/s) and precipitation rate (kg/m^2/s) columns added
 #'
 #' @author Taiki Sakai \email{taiki.sakai@@noaa.gov}
 #'
 #' @examples
+#' # API response may be slow for this example
+#' \donttest{
 #' gps <- data.frame(Latitude=c(33.2, 33.5,33.6),
 #'                   Longitude=c(-118.1, -118.4, -119),
 #'                   UTC=as.POSIXct(
@@ -20,6 +24,7 @@
 #'                       '2022-04-28 10:00:00',
 #'                       '2022-04-28 20:00:00'), tz='UTC'))
 #' gps <- matchGFS(gps)
+#' }
 #'
 #' @importFrom PAMmisc ncToData
 #' @importFrom lubridate round_date
@@ -36,6 +41,7 @@ matchGFS <- function(x) {
     maxTime <- nowUTC() - 36*3600
     origCols <- colnames(x)
     splitDf <- split(x, round_date(x$UTC, unit='3hour'))
+
     splitDf <- lapply(splitDf, function(df) {
         if(round_date(df$UTC[1], unit='3hour') < minTime ||
            round_date(df$UTC[1], unit='3hour') > maxTime) {
@@ -53,6 +59,11 @@ matchGFS <- function(x) {
         vars <- url$vars
         file <- fileNameManager()
         dl <- GET(url$url, write_disk(file, overwrite = TRUE), progress())
+        on.exit({
+          tempCache <- getTempCacheDir(create=FALSE)
+          tempFiles <- list.files(tempCache, full.names=TRUE)
+          unlink(tempFiles, force=TRUE)
+        })
         if(dl$status_code != 200) {
             warning('URL ', url$url, ' is invalid, pasting this into a browser may give more information.')
             df$windU <- NA

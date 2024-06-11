@@ -1,3 +1,26 @@
+# PAMscapes 0.5.8
+
+- dropping `hoardr` and trying to fix cache path on MacOS for CRAN
+
+# PAMscapes 0.5.7
+
+- ggplot 3.5.0 broke some auto date scaling so I ahve to add it back
+
+# PAMscapes 0.5.6
+
+- Adding `by` option for `markNA`
+
+# PAMscapes 0.5.5
+
+- Adding `by` option for `plotPSD`
+
+- Adding `keepQuals` option for `loadMantaNc` to honor
+data quality flags
+
+# PAMscapes 0.5.4
+
+- Updates for `readLocalAIS` to work better with stationary deployments
+
 # PAMscapes 0.5.3
 
 - Added examples for all functions and a small AIS file for use in examples
