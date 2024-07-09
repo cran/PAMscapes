@@ -37,11 +37,19 @@ loadMantaNc <- function(x, keepQuals=c(1)) {
         stop('NetCDF file format not recognized, missing expected',
              ' "time" and "frequency" dimensions.')
     }
-    if(!'psd' %in% names(nc$var)) {
+    dataColOptions <- c('psd', 'sound_pressure_levels')
+    hasData <- names(nc$var) %in% dataColOptions
+    if(!any(hasData)) {
         stop('NetCDF file format not recognized, missing expected',
-             ' "psd" variable.')
+             ' "psd" or "sound_pressure_levels" variable.')
     }
-    hmd <- ncvar_get(nc, varid='psd', start=c(1, 1), count=c(-1, -1))
+    if(sum(hasData) > 1) {
+        warning('Multiple data columns matched, defaulting to "psd"')
+        dataCol <- 'psd'
+    } else {
+        dataCol <- names(nc$var)[hasData]
+    }
+    hmd <- ncvar_get(nc, varid=dataCol, start=c(1, 1), count=c(-1, -1))
     # if qual flags present, replace some HMD with NA
     if('quality_flag' %in% names(nc$var)) {
         quality <- ncvar_get(nc, varid='quality_flag', start=c(1, 1), count=c(-1, -1))
@@ -50,6 +58,9 @@ loadMantaNc <- function(x, keepQuals=c(1)) {
             warning('"keepQuals" expects values from (1, 2, 3, 4)')
             keepQuals <- keepQuals[keepQuals %in% c(1, 2, 3, 4)]
         }
+        # manuscript https://cdn.ioos.noaa.gov/media/2017/12/QARTOD_PassiveAcousticsManual_Final_V1.0_signed.pdf
+        # these should be
+        # "Pass", "Not Evaulated", "Suspect or High Interest", "Fail", "Missing Data"=9
         dqLevels <- c('Good', 'Not evaluated/Unknown', 'Compromised/Questionable', 'Unusable/Bad')
         dqDrop <- qTypes[!qTypes %in% keepQuals]
         if(length(dqDrop) > 0) {
@@ -61,10 +72,45 @@ loadMantaNc <- function(x, keepQuals=c(1)) {
     }
     UTC <- nc$dim$time$vals
     UTC <- ncTimeToPosix(UTC, units=nc$dim$time$units)
+    freqType <- checkFreqType(nc$dim$frequency$vals)
     hmd <- data.frame(t(hmd))
-    colnames(hmd) <- paste0('HMD_', nc$dim$frequency$vals)
+    colnames(hmd) <- paste0(freqType, '_', nc$dim$frequency$vals)
     hmd <- cbind(UTC, hmd)
     hmd
+}
+
+checkFreqType <- function(freq) {
+    if(is.character(freq)) {
+        nc <- ncdf4::nc_open(freq)
+        freq <- nc$dim$frequency$vals
+        if(is.null(freq)) {
+            warning('No frequency dimension')
+            return(NULL)
+        }
+        ncdf4::nc_close(nc)
+    }
+    regDiff <- round(diff(freq), 1)
+    isOne <- regDiff == 1
+    if(all(isOne)) {
+        return('PSD')
+    }
+    # possible weirdness of others having 0, 1, 2? but not a lot
+    if(sum(isOne) > 2) {
+        return('HMD')
+    }
+
+    multDiff <- round(freq[2:length(freq)] / freq[1:(length(freq)-1)], 1)
+    if(all(multDiff == 2)) {
+        return('OL')
+    }
+    thirds <- seq(from=1, to=length(freq), by=3)
+    freq <- freq[thirds]
+    multDiff <- round(freq[2:length(freq)] / freq[1:(length(freq)-1)], 1)
+    if(all(multDiff == 2)) {
+        return('TOL')
+    }
+    warning('Could not parse frequency type')
+    'FREQ'
 }
 
 #' @importFrom lubridate parse_date_time
