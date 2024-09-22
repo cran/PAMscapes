@@ -22,6 +22,14 @@
 #' @param cmap color palette map to use for plot, default is \link[scales]{viridis_pal}
 #' @param toTz timezone to use for the time axis (input data must be UTC).
 #'   Specification must be from \link{OlsonNames}
+#' @param alpha alpha to use for the plot fill
+#' @param maxBins the maximum number of time bins to create for the plot. If
+#'   \code{bin} would divide the range of dates in \code{x} into more than
+#'   \code{maxBins}, then a warning will be given and a larger time bin
+#'   will be used that reduces the number of time bins plotted. Trying to
+#'   show a large number of bins will cause this function to be much slower
+#' @param returnData if \code{TRUE} then no plot will be generated, instead the
+#'   dataframe that would normally be used to make the plot will be returned
 #'
 #' @author Taiki Sakai \email{taiki.sakai@@noaa.gov}
 #'
@@ -41,9 +49,48 @@
 #'
 plotLTSA <- function(x, bin='1hour', scale=c('log', 'linear'),
                      title=NULL, freqRange=NULL, dbRange=NULL, units=NULL,
-                     cmap=viridis_pal()(25), toTz='UTC') {
+                     cmap=viridis_pal()(25), toTz='UTC', alpha=1,
+                     maxBins=800,
+                     returnData=FALSE) {
     x <- checkSoundscapeInput(x, needCols='UTC')
-    x <- toLong(x)
+    maxBin <- calcSliceLength(range(x$UTC), maxBins)
+    if(maxBin > unitToPeriod(bin)) {
+        warning('Selected bin size "', bin, '" results in more than ',
+                'the maximum number of time slices (maxBins=', maxBins,
+                '), a larger time bin (', as.character(maxBin), ') will be used.')
+        bin <- maxBin
+    }
+    scale <- match.arg(scale)
+    # we need a freqLow column later for the geom_, this block
+    # is just making this faster by passing pivot_longer a
+    # spec df for how to do the long-ing
+    whichFreq <- whichFreqCols(x)
+    x$UTC <- with_tz(x$UTC, tzone=toTz)
+    x$UTC <- floor_date(x[['UTC']], unit=bin)
+    setDT(x)
+    x <- x[, lapply(.SD, median), .SDcols=colnames(x)[whichFreq], by=c('UTC')]
+    setDF(x)
+    # x <- binSoundscapeData(x, bin=bin, FUN=median)
+    type <- unique(gsub('_[0-9\\.-]+', '', colnames(x)[whichFreq]))
+    freqVals <- gsub('[A-z]+_', '', colnames(x)[whichFreq])
+    longSpec <- data.frame(.name=freqVals, .value='value')
+    freqVals <- as.numeric(freqVals)
+    longSpec$frequency <- freqVals
+    longSpec$type <- type
+    freqDiffs <- diff(freqVals)
+    lowFreq <- switch(scale,
+                      'log' = {
+                          freqDiffs[1] / (freqDiffs[2]/freqDiffs[1])
+                      },
+                      'linear' = freqDiffs[1]
+    )
+    freqDiffs <- c(lowFreq, freqDiffs)
+    freqLows <- freqVals - freqDiffs
+    longSpec$freqLow <- freqLows
+    # the spec is to make it faster char->numeric conversion and add freqLow column
+    # only need to specify here bc freqLow column
+    x <- toLong(x, spec=longSpec)
+    # we could move this earlier but it doesnt actually take much time
     if(!is.null(freqRange)) {
         if(length(freqRange) != 2) {
             freqRange <- range(x$frequency)
@@ -63,56 +110,39 @@ plotLTSA <- function(x, bin='1hour', scale=c('log', 'linear'),
     if(is.null(units)) {
         units <- typeToUnits(x$type[1])
     }
-    scale <- match.arg(scale)
-    x$UTC <- with_tz(x$UTC, tzone=toTz)
-    x$plotTime <- floor_date(x[['UTC']], unit=bin)
-    setDT(x)
-    # setkeyv(x, c('frequency', 'plotTime'))
-    x <- x[, .('value'=median(.SD$value)), by=c('frequency', 'plotTime')]
-    setDF(x)
-    # x <- group_by(x, frequency, plotTime) %>%
-    #     summarise(value = median(value)) %>%
-    #     ungroup()
-    freqVals <- sort(unique(x$frequency))
-    freqDiffs <- diff(freqVals)
-    lowFreq <- switch(scale,
-                      'log' = {
-                          freqDiffs[1] / (freqDiffs[2]/freqDiffs[1])
-                      },
-                      'linear' = freqDiffs[1]
-    )
-    freqDiffs <- c(lowFreq, freqDiffs)
-    names(freqDiffs) <- as.character(freqVals)
-    # making geom_rect endpoints for x and y
-    x$freq_low <- x$frequency - freqDiffs[as.character(x$frequency)]
-    x$UTCend <- x$plotTime + unitToPeriod(bin)
+    x$UTCend <- x$UTC + unitToPeriod(bin)
     if(is.function(cmap)) {
         cmap <- cmap(25)
     }
     if(is.null(dbRange)) {
-        dbRange <- range(x$value)
+        dbRange <- range(x$value, na.rm=TRUE)
+    }
+    if(is.na(dbRange[1])) {
+        dbRange[1] <- min(x$value, na.rm=TRUE)
+    }
+    if(is.na(dbRange[2])) {
+        dbRange[2] <- max(x$value, na.rm=TRUE)
     }
     if(scale == 'log') {
-        x <- dplyr::filter(x, .data$freq_low > 0)
+        x <- dplyr::filter(x, .data$freqLow > 0)
+    }
+    if(isTRUE(returnData)) {
+        return(x)
     }
     ggplot(x) +
-        # geom_raster(aes(x=.data$plotTime,
-        #               # xmax=.data$UTCend,
-        #               # ymin=.data$freq_low,
-        #               y=.data$frequency,
-        #               fill=.data$value)) +
-        geom_rect(aes(xmin=.data$plotTime,
+        geom_rect(aes(xmin=.data$UTC,
                       xmax=.data$UTCend,
-                      ymin=.data$freq_low,
+                      ymin=.data$freqLow,
                       ymax=.data$frequency,
-                      fill=.data$value)) +
+                      fill=.data$value),
+                  alpha=alpha) +
         scale_fill_gradientn(colors=cmap,
                              limits=dbRange,
                              oob=squish) +
         scale_x_datetime(expand=c(0,0)) +
         scale_y_log10(expand=c(0,0)) +
         labs(fill=units) +
+        theme(legend.title = element_text(angle=90)) +
+        guides(fill=guide_colorbar(title.position='right', barheight=unit(1, 'null'), title.hjust=.5)) +
         ggtitle(title)
 }
-
-globalVariables('.')

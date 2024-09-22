@@ -29,7 +29,7 @@
 #'
 #' @importFrom dplyr group_by summarise ungroup rename
 #'
-createOctaveLevel <- function(x, type=c('ol', 'tol'), freqRange=NULL, method=c('sum', 'mean')) {
+createOctaveLevel <- function(x, type=c('ol', 'tol'), freqRange=NULL, method=c('sum', 'mean', 'median')) {
     x <- checkSoundscapeInput(x)
     startLong <- isLong(x)
     x <- toLong(x)
@@ -47,12 +47,12 @@ createOctaveLevel <- function(x, type=c('ol', 'tol'), freqRange=NULL, method=c('
     x$value <- 10^(x$value / 10)
     FUN <- switch(match.arg(method),
                   'sum' = sum,
-                  'mean' = mean
+                  'mean' = mean,
+                  'median' = median
     )
-    x <- x %>%
-        group_by(.data$UTC, .data$octave) %>%
-        summarise(value = FUN(.data$value)) %>%
-        ungroup()
+    setDT(x)
+    x <- x[, lapply(.SD, FUN), .SDcols='value', by=c('UTC', 'octave')]
+    setDF(x)
     x$type <- toupper(type)
     x <- rename(x, frequency = 'octave')
     x$frequency <- as.numeric(levels(x$frequency))[as.numeric(x$frequency)]
@@ -73,6 +73,12 @@ getOctaveLevels <- function(type=c('ol', 'tol'), freqRange=NULL) {
         12500, 16e3, 20e3, 25e3, 31500, 40e3, 50e3, 63e3, 80e3, 100e3,
         125e3, 160e3, 200e3, 250e3, 315e3, 400e3, 500e3)
     ix <- seq_along(nominalFreqs) - 1
+    if(!is.null(freqRange) && length(freqRange) == 2) {
+        freqRange <- sort(freqRange)
+        inRange <- nominalFreqs >= freqRange[1] & nominalFreqs <= freqRange[2]
+        nominalFreqs <- nominalFreqs[inRange]
+        ix <- ix[inRange]
+    }
     freqVals <- 10^(ix/10)
     switch(type,
            'ol' = {
@@ -89,5 +95,12 @@ getOctaveLevels <- function(type=c('ol', 'tol'), freqRange=NULL) {
     isSci <- grepl('e\\+', labels)
     labels[isSci] <- format(as.numeric(labels[isSci]), scientific=FALSE)
     labels <- paste0(toupper(type), '_', labels)
+    # if(!is.null(freqRange) && length(freqRange) == 2) {
+    #     freqRange <- sort(freqRange)
+    #     inRange <- nominalFreqs >= freqRange[1] & nominalFreqs <= freqRange[2]
+    #     nominalFreqss <- nominalFreqs[inRange]
+    #     labels <- labels[inRange]
+    #     limits <- limits[c(inRange, inRange[length(inRange)])]
+    # }
     list(limits = freqLims, labels=labels, freqs=nominalFreqs)
 }

@@ -14,10 +14,12 @@ plotPSD(
   freqRange = NULL,
   dbRange = NULL,
   dbInt = 1,
+  densityRange = NULL,
   units = "dB re: 1uPa^2/Hz",
   cmap = viridis_pal()(25),
   by = NULL,
   title = NULL,
+  returnData = FALSE,
   progress = TRUE
 )
 
@@ -25,7 +27,9 @@ prepPSDData(
   x,
   freqRange = NULL,
   style = c("density", "quantile"),
+  by = NULL,
   dbInt = 1,
+  compression = 10000,
   progress = TRUE
 )
 }
@@ -48,16 +52,27 @@ of file paths, or the output from \code{prepPSDData}}
 
 \item{dbInt}{bin interval size for density plot}
 
+\item{densityRange}{optional range of values for density color scale}
+
 \item{units}{units for dB axis of plot}
 
 \item{cmap}{color map to use for density plot}
 
 \item{by}{optional column to plot different quantile lines by, only affects
-\code{style='quantile'}}
+\code{style='quantile'}. If \code{x} is a data.frame, \code{by} can also
+be one of \code{'hour'}, \code{'month'}, or \code{'year'} and that column
+will be created automatically if not present.}
 
 \item{title}{optional title for plot}
 
+\item{returnData}{if \code{TRUE} then no plot will be generated, instead the
+dataframe that would normally be used to make the plot will be returned}
+
 \item{progress}{logical flag to show progress bar}
+
+\item{compression}{compression factor for \link[tdigest]{tdigest}, lower
+values are less accurate but will compute faster. Only relevant for
+\code{style='quantile'} when loading and combining multiple datasets}
 }
 \value{
 a ggplot object for \code{plotPSD}, see details for \code{prepPSDData}

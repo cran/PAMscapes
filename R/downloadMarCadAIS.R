@@ -1,6 +1,7 @@
 #' @title Download AIS Data from Marine Cadastre
 #'
-#' @description Downloads daily AIS files from \url{https://marinecadastre.gov/ais/}
+#' @description Downloads daily AIS files from
+#'   \url{https://hub.marinecadastre.gov/pages/vesseltraffic}
 #'   covering the date range present in input data
 #'
 #' @param x a dataframe with column \code{UTC} in POSIXct format
@@ -29,7 +30,7 @@
 #' # a ~500mb file
 #' # marcadFiles <- downloadMarCadAIS(gps, outDir=tempDir)
 #'
-#' @importFrom httr GET progress write_disk
+#' @importFrom httr GET progress write_disk http_error
 #' @importFrom lubridate year
 #'
 #' @export
@@ -42,11 +43,11 @@ downloadMarCadAIS <- function(x, outDir, overwrite=FALSE, unzip=TRUE,
     if(any(tooEarly)) {
         warning('AIS data before 2015 has a different format and cannot be downloaded')
     }
-    tooLate <- years > 2023
-    if(any(tooLate)) {
-        warning('AIS data after 2023 is not yet available and cannot be downloaded')
-    }
-    allDays <- allDays[!tooEarly & !tooLate]
+    # tooLate <- years > 2023
+    # if(any(tooLate)) {
+    #     warning('AIS data after 2023 is not yet available and cannot be downloaded')
+    # }
+    allDays <- allDays[!tooEarly]# & !tooLate]
     if(length(allDays) == 0) {
         warning('No valid years present')
         return(NULL)
@@ -62,6 +63,14 @@ downloadMarCadAIS <- function(x, outDir, overwrite=FALSE, unzip=TRUE,
     for(i in seq_along(urls)) {
         if(verbose) {
             cat(paste0('Downloading AIS file ', i, ' out of ', length(urls), '...\n'))
+        }
+        checkExists <- !http_error(urls[i])
+        if(!checkExists) {
+            cat('URL does not exist for day',
+                format(allDays[i], '%Y-%m-%d'),
+                'may be too recent\n')
+            outZip[i] <- NA
+            next
         }
         if(isFALSE(overwrite) &&
            (file.exists(outZip[i]) ||

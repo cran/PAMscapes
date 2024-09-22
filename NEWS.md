@@ -1,3 +1,34 @@
+# PAMscapes 0.7.0
+
+- Adding new `runSoundscapeExplorer` function that launches a `shiny` 
+app to explore the various visualization options for soundscape data
+
+# PAMscapes 0.6.3
+
+- Adding `tz` option for `checkSoundscapeInput` if data are not already in
+UTC timezone
+
+- `checkSoundscapeInput` combines multiple files by default
+
+# PAMscapes 0.6.2
+
+- Adding `by` option for `plotPSD`
+
+- Improving performance for large datasets in `plotPSD` when they are provided
+as a single dataframe
+
+- Adding `binSoundscapeData` function to summarise data by a smaller
+unit of time
+
+- Added binning options directly to `checkSoundscapeInput`
+
+- Adding `returnData` option for most plotting functions to return the
+plotted data instead of a plot
+
+# PAMscapes 0.6.1
+
+- Adding `matchSeascape` function
+
 # PAMscapes 0.6.0
 
 - Fixing CRAN checking issue with `matchGFS` example

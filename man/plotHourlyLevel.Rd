@@ -10,8 +10,10 @@ plotHourlyLevel(
   units = NULL,
   scale = c("log", "linear"),
   freqMin = NULL,
+  dbRange = NULL,
   toTz = "UTC",
-  cmap = viridis_pal()(25)
+  cmap = viridis_pal()(25),
+  returnData = FALSE
 )
 }
 \arguments{
@@ -30,10 +32,15 @@ the frequency axis}
 \item{freqMin}{minimum frequency for the plot range, if desired to be different
 than the minimum frequency of the data}
 
+\item{dbRange}{range of dB values to plot}
+
 \item{toTz}{timezone to use for the time axis (input data must be UTC).
 Specification must be from \link{OlsonNames}}
 
 \item{cmap}{color palette map to use for plot, default is \link[scales]{viridis_pal}}
+
+\item{returnData}{if \code{TRUE} then no plot will be generated, instead the
+dataframe that would normally be used to make the plot will be returned}
 }
 \value{
 a ggplot object
