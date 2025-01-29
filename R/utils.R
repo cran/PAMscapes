@@ -157,10 +157,15 @@ unitToPeriod <- function(x) {
     if(is.period(x)) {
         return(x)
     }
+    x <- gsub(' ', '', x)
     x <- gsub('([0-9]*)(.*)', '\\1_\\2', x)
     x <- strsplit(x, '_')[[1]]
     if(x[1] == '') {
         x[1] <- '1'
+    }
+    return(period(as.numeric(x[1]), units=x[2]))
+    if(x[1] == '1') {
+        return(period(1, units=x[2]))
     }
     # doing this to convert to roundest unit
     # e.g. 720 seconds -> 12 minutes
@@ -182,6 +187,19 @@ whichFreqCols <- function(x) {
         x[1] == type
     })
     which(isFreq)[sameBase]
+}
+
+getNonFreqCols <- function(x) {
+    if(is.data.frame(x)) {
+        x <- colnames(x)
+    }
+    if(isLong(x)) {
+        longCols <- c('UTC', 'frequency', 'type', 'value')
+        return(x[!x %in% longCols])
+    }
+    freqCols <- whichFreqCols(x)
+    nonFreq <- x[!(1:length(x)) %in% freqCols]
+    return(nonFreq[nonFreq != 'UTC'])
 }
 
 myLog10Scale <- function(g, range, dim=c('x', 'y')) {

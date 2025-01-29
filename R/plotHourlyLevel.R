@@ -39,14 +39,17 @@
 #'
 #' @export
 #'
-plotHourlyLevel <- function(x, title=NULL, units=NULL,
-                            scale=c('log', 'linear'), freqMin=NULL,
+plotHourlyLevel <- function(x, 
+                            title=NULL,
+                            units=NULL,
+                            scale=c('log', 'linear'),
+                            freqMin=NULL,
                             dbRange=NULL,
                             toTz='UTC',
                             cmap=viridis_pal()(25),
                             returnData=FALSE) {
     scale <- match.arg(scale)
-    x <- checkSoundscapeInput(x, needCols='UTC')
+    x <- loadSoundscapeData(x, needCols='UTC')
     x <- toLong(x)
     if('type' %in% colnames(x)) {
         if(x$type[1] == 'BB') {

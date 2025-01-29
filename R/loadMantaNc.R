@@ -10,6 +10,11 @@
 #'   "Not evaluated/Unknown", "Compromised/Questionable", and "Unusable/Bad".
 #'   HMD levels for points with data quality flags outside of \code{keepQuals}
 #'   will be marked as \code{NA}.
+#' @param keepEffort if \code{TRUE} or \code{FALSE}, a logical flag whether or
+#'   not to keep the effort information with the outputs (number of seconds
+#'   per minute). If a numeric value, then any minutes with an effort value
+#'   less than \code{keepEffort} will be removed (e.g. \code{50} will remove
+#'   minutes with less than 50 seconds of effort)
 #'
 #' @return a dataframe with first column UTC and other columns
 #'   named HMD_Frequency
@@ -23,9 +28,10 @@
 #' }
 #'
 #' @export
-#' @importFrom ncdf4 nc_open nc_close ncvar_get
+#' @importFrom ncdf4 nc_open nc_close ncvar_get ncatt_get
+#' @importFrom sf st_coordinates st_as_sf
 #'
-loadMantaNc <- function(x, keepQuals=c(1)) {
+loadMantaNc <- function(x, keepQuals=c(1), keepEffort=TRUE) {
     if(!file.exists(x)) {
         message('File ', x, ' does not exist.')
         return(NULL)
@@ -72,11 +78,72 @@ loadMantaNc <- function(x, keepQuals=c(1)) {
     }
     UTC <- nc$dim$time$vals
     UTC <- ncTimeToPosix(UTC, units=nc$dim$time$units)
+    
     freqType <- checkFreqType(nc$dim$frequency$vals)
     hmd <- data.frame(t(hmd))
-    colnames(hmd) <- paste0(freqType, '_', nc$dim$frequency$vals)
+    # we double round the name to avoid mismatched round-to-even behavior
+    labels <- nc$dim$frequency$val
+    labels[labels < 1e3] <- round(labels[labels < 1e3], 0)
+    labels[labels >= 1e3] <- round(labels[labels >= 1e3], 0)
+    labels <- paste0(freqType, '_', labels)
+    colnames(hmd) <- labels
+    # colnames(hmd) <- paste0(freqType, '_', round(round(nc$dim$frequency$vals, 3), 1))
+    hmLevs <- getHmdLevels(freqRange=range(nc$dim$frequency$vals))
+    mismatch <- !names(hmd) %in% hmLevs$labels
     hmd <- cbind(UTC, hmd)
+    if(!isFALSE(keepEffort) &&
+       !'effort' %in% names(nc$var)) {
+        warning('No effort data found in netCDF')
+        keepEffort <- FALSE
+    }
+    if(!isFALSE(keepEffort)) {
+        hmd$effortSeconds <- ncvar_get(nc, varid='effort', start=1, count=-1)
+    }
+    if(is.numeric(keepEffort)) {
+        hmd <- hmd[hmd$effortSeconds >= keepEffort, ]
+    }
+    coords <- ncatt_get(nc, varid=0, attname='geospatial_bounds')
+    if(isTRUE(coords$hasatt)) {
+        wkt <- checkValidWKT(coords$value)
+        if(is.null(wkt)) {
+            warning('geospatial_bounds attribute could not parsed as proper WKT ',
+                    'for file ', basename(nc), ' Lat/Long will not be included.')
+        } else {
+            coordVals <- st_coordinates(
+                st_as_sf(
+                    data.frame(geometry=wkt),
+                    wkt='geometry'
+                )
+            )
+            if(length(coordVals) == 2) {
+                hmd$Latitude <- coordVals[1]
+                hmd$Longitude <- coordVals[2]
+            }
+        }
+    }
+    platform <- ncatt_get(nc, varid=0, 'platform')
+    if(isTRUE(platform$hasatt)) {
+        hmd$platform <- platform$value
+    }
     hmd
+}
+
+checkValidWKT <- function(x) {
+    if(is.null(x)) {
+        return(x)
+    }
+    nCommas <- length(gregexpr(',', x)[[1]])
+    if(nCommas == 1) {
+        x <- gsub(',', '', x)
+    }
+    if(nCommas == 0) {
+        return(x)
+    }
+    tryWKT <- try(st_as_sf(data.frame(geometry=x), wkt='geometry'), silent=TRUE)
+    if(inherits(tryWKT, 'try-error')) {
+        return(NULL)
+    }
+    x
 }
 
 #' @importFrom lubridate parse_date_time
@@ -92,7 +159,7 @@ ncTimeToPosix <- function(vals, units) {
     #     return(vals)
     # }
     isNa <- is.na(vals)
-
+    
     if(grepl('hours? since', units, ignore.case=TRUE)) {
         or <- gsub('hours? since ', '', units, ignore.case=TRUE)
         or <- gsub('\\s{0,1}UTC', '', or)

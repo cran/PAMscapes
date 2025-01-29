@@ -9,8 +9,9 @@
 #' @param title title for the plot
 #' @param units name of units for plot labeling, default is taken from
 #'   common soundscape units
-#' @param cpal colors to use for different lines, can either be a color
+#' @param color colors to use for different lines, can either be a color
 #'   palette function or a vector of color names
+#' @param cpal Deprecated in favor of \code{color} for naming consistency
 #' @param lwd line width, either a single value or a vector of widths
 #'   matching the length of \code{columns}
 #' @param minVals minimum value for each of \code{columns} to use for rescaling,
@@ -56,7 +57,7 @@
 #' @author Taiki Sakai \email{taiki.sakai@@noaa.gov}
 #'
 #' @examples
-#' manta <- checkSoundscapeInput(system.file('extdata/MANTAExampleSmall1.csv', package='PAMscapes'))
+#' manta <- loadSoundscapeData(system.file('extdata/MANTAExampleSmall1.csv', package='PAMscapes'))
 #' plotScaledTimeseries(manta, columns=c('HMD_50', 'HMD_100', 'HMD_200'))
 #'
 #' @importFrom scales hue_pal
@@ -64,8 +65,15 @@
 #'
 #' @export
 #'
-plotScaledTimeseries <- function(x, columns, title=NULL, units=NULL,
-                                 cpal=hue_pal(), lwd=.5, minVals=NA, relMax=1,
+plotScaledTimeseries <- function(x, 
+                                 columns, 
+                                 title=NULL, 
+                                 units=NULL,
+                                 color=hue_pal(),
+                                 cpal, 
+                                 lwd=.5, 
+                                 minVals=NA, 
+                                 relMax=1,
                                  toTz='UTC') {
     x <- checkSimple(x, needCols='UTC')
     x$UTC <- with_tz(x$UTC, tzone=toTz)
@@ -78,7 +86,12 @@ plotScaledTimeseries <- function(x, columns, title=NULL, units=NULL,
     if(is.null(units)) {
         units <- 'Value'
     }
-    cpal <- checkCpal(cpal, length(columns))
+    # check if using old arg name and reassign
+    if(!missing(cpal) && missing(color)) {
+        warning('Argument "cpal" is deprecated, please use "color" instead')
+        color <- cpal
+    }
+    cpal <- checkCpal(color, length(columns))
     names(cpal) <- columns
     if(length(columns) > 1) {
         for(i in 2:length(columns)) {
@@ -86,6 +99,7 @@ plotScaledTimeseries <- function(x, columns, title=NULL, units=NULL,
                 min2 <- min(c(x[[columns[2]]], minVals[2]), na.rm=TRUE)
                 min1 <- min(c(x[[columns[1]]], minVals[1]), na.rm=TRUE)
                 diff2 <- diff(range(c(x[[columns[2]]], minVals[2]), na.rm=TRUE))
+                diff2 <- ifelse(diff2 == 0, 1, diff2)
                 diff1 <- diff(range(c(x[[columns[1]]], minVals[1]), na.rm=TRUE))
 
                 col2Trans <- function(y) {
@@ -107,7 +121,7 @@ plotScaledTimeseries <- function(x, columns, title=NULL, units=NULL,
     x$Type <- factor(x$Type, levels=columns)
     g <- ggplot(data=x, aes(x=.data$UTC, y=.data$value, col=.data$Type, lwd=.data$Type)) +
         geom_line() +
-        scale_color_manual(values=cpal) +
+        scale_color_manual(values=cpal, breaks=columns) +
         scale_linewidth_manual(values=lwd)
     g <- g + ggtitle(title) +
         labs(y=units, x=paste0('Date (', toTz, ')'))
@@ -121,7 +135,11 @@ plotScaledTimeseries <- function(x, columns, title=NULL, units=NULL,
 
 doRescale <- function(x, target, min=NA, relMax=1) {
     x <- c(min, x)
-    x <- (x - min(x, na.rm=TRUE)) / diff(range(x, na.rm=TRUE))
+    # want to rescale to 0-1
+    xRange <- diff(range(x, na.rm=TRUE))
+    xRange <- ifelse(xRange == 0, 1, xRange) # if all same value dont div 0
+    x <- (x - min(x, na.rm=TRUE)) / xRange
+    # then cast to range of "target"
     x <- x * diff(range(target, na.rm=TRUE)) * relMax + min(target, na.rm=TRUE)
     x[-1]
 }

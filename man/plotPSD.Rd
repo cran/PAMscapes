@@ -18,6 +18,9 @@ plotPSD(
   units = "dB re: 1uPa^2/Hz",
   cmap = viridis_pal()(25),
   by = NULL,
+  referenceLevel = NULL,
+  facet = NULL,
+  ncol = NULL,
   title = NULL,
   returnData = FALSE,
   progress = TRUE
@@ -62,6 +65,14 @@ of file paths, or the output from \code{prepPSDData}}
 \code{style='quantile'}. If \code{x} is a data.frame, \code{by} can also
 be one of \code{'hour'}, \code{'month'}, or \code{'year'} and that column
 will be created automatically if not present.}
+
+\item{referenceLevel}{only used together with \code{by}. A value of the
+\code{by} column to use as a reference for all other levels. The plot
+will then show the difference between the other levels and the reference}
+
+\item{facet}{optional column to facet the plots by}
+
+\item{ncol}{number of columns to use when plotting with \code{facet}}
 
 \item{title}{optional title for plot}
 
@@ -110,7 +121,7 @@ using "dbVals" as boundaries}
 }
 \examples{
 
-psd <- checkSoundscapeInput(system.file('extdata/PSDSmall.csv', package='PAMscapes'))
+psd <- loadSoundscapeData(system.file('extdata/PSDSmall.csv', package='PAMscapes'))
 # Plotting only first 1000 columns for brevity
 plotPSD(psd[1:1000], style='density')
 plotPSD(psd[1:1000], style='quantile', q=.05)

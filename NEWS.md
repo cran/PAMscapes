@@ -1,3 +1,114 @@
+# PAMscapes 0.10.0
+
+- Adding `formatEffort` and related internal helper functions
+
+- Adding `effort` to `plotAcousticScene` to plot off-effort times
+
+- Adding some tests for detection data processing
+
+- Adding `plotDetectionBoxplot` plotting function
+
+- Deprecating `cpal` argument in `plotScaledTimeseries` in favor of `color`
+for better naming consistency
+
+# PAMscapes 0.9.1
+
+- Bug fix for bad Lat/Long WKT in some nc files
+
+- Reducing columns of PSD example file to 3kHz instead of 24kHz because
+it was causing UBSAN errors (I think)
+
+# PAMscapes 0.9.0
+
+- Adding `binDetectionData` function for converting detection data to
+presence data (e.g. hourly/daily presence)
+
+- Adding `by` option to `plotAcousticScene` to allow for faceting the plot
+
+- Adding ability for `plotAcousticScene` to work without frequency ranges,
+just plotting equal size bars for each detection type present
+
+# PAMscapes 0.8.2
+
+- Adding `binCount` to `loadSoundscapeData`, `binSoundscapeData`, and
+`loadMultiscapeData` to return number of times in each bin
+
+- Adding `keepEffort` to `loadSoundscapeData` and `loadMultiscapeData`
+to return effort column. Can also be used to set a threshold for
+an amount of effort to keep in results
+
+# PAMscapes 0.8.1
+
+- `plotLTSA` with `facet` changed labeling scheme
+
+# PAMscapes 0.8.0
+
+- HMD type input standardized to always use same rounded column
+names (why was this such a headache). Also new option for
+all data loaders `dropNonHmd` to auto-remove any columns in
+HMD data that are not standard HMD levels - most commonly 
+exactly Nyquist in some datasets
+
+- Deprecating `checkSoundscapeInput` in favor of `loadSoundscapeData`
+because the old name was stupid 
+
+- Adding new function `loadMultiscapeData` to load multiple folders of
+soundscape data to better allow for large scale comparisons
+
+- Adding parallelization ability to `loadSoundscapeData` using
+`future.apply` package
+
+- Adding `facet` options to `plotLTSA` and `plotPSD` to create faceted
+plots by a column in the data. Also added to `runSoundscapeExplorer`
+for `plotPSD`
+
+- `createOctaveLevel` updated to accurately handle HMD data at lower
+frequencies by summing partial bands. Also dropped the method
+argument because we are always summing (`normalize` argument handles
+what people might want from a mean/median solution??)
+
+- `binSoundscapeData` changed to use character function argument instead
+of actual function (to better incorporate `na.rm=TRUE`)
+
+- Adding `referenceLevel` option to `plotPSD` that plots different 
+values of `by` column as difference between the selected reference
+column instead of absolutes
+
+# PAMscapes 0.7.3
+
+- Bug in `plotPSD` for log scale frequency axis if frequency of 0 was present
+
+# PAMscapes 0.7.2
+
+- Updating `createOctaveLevel` to work properly for hybrid-millidecade data.
+Was previously not correcting for binwidth correction. Also added a
+`normalized` option to allow for bin width-normalized outputs
+
+- `createOctaveLevel` also now properly keeps track of any added columns
+in addition to the standard soundscape metric data (e.g. GPS)
+
+- Updating `matchGFS` with new `progress` and `keepMatch` options, and
+adding `windMag` to the standard output
+
+- Updating tutorial with PyPam examples and data and to keep up with 
+more recent developments
+
+- Fixed problem in `plotScaledTimeseries` if second plotted column was
+all the same value
+
+- Added "Copy to create this plot" text output to all `runSoundscapeExplorer`
+plots
+
+- Updated `loadMantaNc` (and thus `checkSoundscapeInput`) to use a more
+standard naming scheme for HMD data from netCDF files - will now always
+be rounded to a single decimal point
+
+# PAMscapes 0.7.1
+
+- `loadMantaNc` (and thus `checkSoundscapeInput`) now knows to look for
+coordinates and platform from NC files to create `Latitude` `Longitude`
+and `platform` columns in the loaded data
+
 # PAMscapes 0.7.0
 
 - Adding new `runSoundscapeExplorer` function that launches a `shiny` 

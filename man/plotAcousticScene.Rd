@@ -6,10 +6,13 @@
 \usage{
 plotAcousticScene(
   x,
-  freqMap,
+  freqMap = NULL,
   typeCol = "species",
   title = NULL,
   bin = "1day",
+  by = NULL,
+  combineYears = FALSE,
+  effort = NULL,
   scale = c("log", "linear"),
   freqMin = NULL,
   freqMax = NULL,
@@ -35,6 +38,15 @@ column in \code{freqMap}}
 
 \item{bin}{time bin to use for plotting time axis. Each detection will
 be displayed as covering this amount of time}
+
+\item{by}{if not \code{NULL}, column name to facet plot by (e.g. site)}
+
+\item{combineYears}{logical flag to combine all observations to display
+as a single "year". The year will be set to 2019, and detections falling
+on leap days (February 29th) will be removed}
+
+\item{effort}{if not \code{NULL}, a dataframe decribing effort data to be
+be formatted with \link{formatEffort}}
 
 \item{scale}{one of \code{log} or \code{linear}, the frequency scale for
 the plot}
