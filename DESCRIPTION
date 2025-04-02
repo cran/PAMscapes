@@ -1,6 +1,6 @@
 Package: PAMscapes
 Title: Tools for Summarising and Analysing Soundscape Data
-Version: 0.10.0
+Version: 0.11.3
 Authors@R: c(
     TS = person("Taiki", "Sakai", email = "taiki.sakai@noaa.gov", role = c("aut", "cre")),
     AS = person("Anne", "Simonis", role = c("ctb")),
@@ -19,12 +19,12 @@ License: GNU General Public License
 Encoding: UTF-8
 RoxygenNote: 7.3.1
 Depends: R (>= 3.5.0)
-Imports: dplyr, rlang, ggplot2, lubridate, scales, tidyr, httr,
-        data.table, geosphere, sf, PAMmisc, ncdf4, tdigest, purrr,
-        shiny, future.apply
+Imports: dplyr, rlang, ggplot2 (>= 3.5.0), lubridate, scales, tidyr,
+        httr, data.table, geosphere, sf, PAMmisc (>= 1.12.4), ncdf4,
+        tdigest, purrr, shiny, future.apply, signal, tuneR, DT
 Suggests: testthat
 NeedsCompilation: no
-Packaged: 2025-01-29 03:00:42 UTC; tnsak
+Packaged: 2025-04-02 19:32:45 UTC; tnsak
 Author: Taiki Sakai [aut, cre],
   Anne Simonis [ctb],
   Shannon Rankin [ctb],
@@ -32,4 +32,4 @@ Author: Taiki Sakai [aut, cre],
   Kaitlin Palmer [ctb]
 Maintainer: Taiki Sakai <taiki.sakai@noaa.gov>
 Repository: CRAN
-Date/Publication: 2025-01-29 06:10:02 UTC
+Date/Publication: 2025-04-02 20:30:05 UTC

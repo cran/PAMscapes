@@ -1,3 +1,40 @@
+# PAMscapes 0.11.3
+
+- Adding ability for `1day` style presence for loading detections
+
+- Small rework of naming pattern for column maps in `loadDetectionData`
+
+# PAMscapes 0.11.2
+
+- Addressing minor QAQC workflow potential bugs
+
+- Fixing issue with `dropNonHmd` option of `loadSoundscapeData` and
+added warning when it appears to be fully non-standard HMD
+
+- Adding error catch to `createOctaveLevel` for non-standard HMD levels
+since these can't accurately be summed
+
+# PAMscapes 0.11.1
+
+- Adding a better error message when users attempt to load MANTA Metadata NetCDF
+files with `loadSoundscapeData`
+
+- Adding broadband option to `type` for `createOctaveLevel` to allow users to
+create arbitrary broadband measures
+
+# PAMscapes 0.11.0
+
+- Adding QAQC functions `evaluateRecordings`, `evaluateDeployment` and
+`runQAQCReview`
+
+- Oh and the plotting functions
+
+# PAMscapes 0.10.1
+
+- Added `keepQuals` argument to `loadSoundscapeData` and `loadMultiscapeData`
+
+- Some bug fixes for loading SanctSound data
+
 # PAMscapes 0.10.0
 
 - Adding `formatEffort` and related internal helper functions

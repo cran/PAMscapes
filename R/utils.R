@@ -69,7 +69,7 @@ parseToUTC <- function(x,
         }
     })
     if(!inherits(x, 'POSIXct')) {
-        origTz <- parse_date_time(x, orders=format, tz=tz, exact=TRUE, truncated=3)
+        origTz <- parse_date_time(x, orders=format, tz=tz, exact=FALSE, truncated=3)
         if(!inherits(origTz, 'POSIXct')) {
             stop('Unable to convert to POSIXct time.', call.=FALSE)
         }
@@ -360,4 +360,15 @@ calcSliceLength <- function(dates, maxSlice) {
     binString <- paste0(secBin, unit)
     binPer <- unitToPeriod(binString)
     binPer
+}
+
+printN <- function(x, n=6, collapse=', ') {
+    nItems <- length(x)
+    if(nItems == 0) {
+        return('')
+    }
+    if(nItems > n) {
+        x <- c(x[1:n], paste0('... (', nItems-n, ' more not shown)'))
+    }
+    paste0(paste(x, collapse=collapse))
 }
