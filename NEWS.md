@@ -1,3 +1,46 @@
+# PAMScapes 0.14.0
+
+- Adding `matchDetectionData` function for integrating detections wiht
+other types of data
+
+- Added default Makara effort columns to `loadDetectionData`
+
+- Added effortStart/effortEnd to `runDetLoadHelper` column map
+
+- `plotDetectionBoxplot` and `plotAcousticScene` can automatically
+account for effort if "effortStart" and "effortEnd" columns are
+present (no separate effort dataframe required)
+
+- `runDetectionExplorer` Shiny app created as a replacement and
+upgrade of the previous `runDetLoadHelper` app. Combines the data
+loading functionality with plot previews similar to `runSoundscapeExplorer`
+
+- Added `plotPolarDetections` plotting function
+
+# PAMscapes 0.13.1
+
+- Adding time range slider to `runDailyLTSAReview`
+
+- Fixing `loadDetectionData` and `runDetLoadHelper` to work with 
+dataframe input 
+
+# PAMscapes 0.13.0
+
+- Added `runDailyLTSAReview` function to review and annotate NetCDF soundscape
+files with both data quality values and comments
+
+# PAMscapes 0.12.0
+
+- Added `runDetLoadHelper` function to assist users with `loadDetectionData`
+parameter setup for arbitrary detection data
+
+# PAMscapes 0.11.4
+
+- Occasional problem with edge bands with `createOctaveLevel`, partial bands
+were not correctly identified and removed
+
+- `matchGFS` URL changed seemingly yesterday so was borked
+
 # PAMscapes 0.11.3
 
 - Adding ability for `1day` style presence for loading detections

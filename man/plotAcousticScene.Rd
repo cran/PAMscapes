@@ -46,7 +46,9 @@ as a single "year". The year will be set to 2019, and detections falling
 on leap days (February 29th) will be removed}
 
 \item{effort}{if not \code{NULL}, a dataframe decribing effort data to be
-be formatted with \link{formatEffort}}
+be formatted with \link{formatEffort}. Alternatively, if columns
+"effortStart" and "effortEnd" are present in \code{x}, then these will
+be used.}
 
 \item{scale}{one of \code{log} or \code{linear}, the frequency scale for
 the plot}
@@ -88,6 +90,11 @@ freqMap <- data.frame(type=c('Dolphin', 'Whale'),
                       freqMax=c(30e3, 400),
                       color=c('darkgreen', 'blue'))
 plotAcousticScene(detDf, freqMap=freqMap, typeCol='species', bin='1day')
+
+detFile <- system.file('extdata/detectionExample.csv', package='PAMscapes')
+detData <- loadDetectionData(detFile, source='csv',
+                     columnMap=list(UTC='start', end='end', species='sound_code'))
+plotAcousticScene(detData)
 
 }
 \author{

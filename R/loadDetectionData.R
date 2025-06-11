@@ -44,6 +44,7 @@
 #'   should be "1". Note that all values will be converted to characters,
 #'   so the string \code{"1"} must be used instead of the numeric \code{1}
 #' @param extraCols (optional) any additional columns to keep with the output
+#' @param verbose logical flag to show messages
 #' @param \dots additional arguments used for certain \code{source} values
 #'
 #' @author Taiki Sakai \email{taiki.sakai@@noaa.gov}
@@ -51,6 +52,13 @@
 #' @return a dataframe with columns UTC, end, species, and detectionType, where
 #'   each row represents a single detection event. May have additional columns
 #'   depending on other parameters
+#'
+#' @examples
+#'
+#' detFile <- system.file('extdata/detectionExample.csv', package='PAMscapes')
+#' detData <- loadDetectionData(
+#'                detFile, source='csv',
+#'                columnMap=list(UTC='start',end='end', species='sound_code'))
 #'
 #' @export
 #'
@@ -63,7 +71,7 @@ loadDetectionData <- function(x,
                               columnMap=NULL,
                               detectionType=c('auto', 'presence', 'detection'),
                               presenceDuration=NULL,
-                              dateFormat=c('%Y-%m-%dT%H:%M:%S+0000',
+                              dateFormat=c('%Y-%m-%dT%H:%M:%S%z',
                                            '%Y-%m-%d %H:%M:%S',
                                            '%m-%d-%Y %H:%M:%S',
                                            '%Y/%m/%d %H:%M:%S',
@@ -73,6 +81,7 @@ loadDetectionData <- function(x,
                               speciesCols=NULL,
                               detectedValues=NULL,
                               extraCols=NULL,
+                              verbose=TRUE,
                               ...) {
     # Allow for '1day' style description of presence
     if(!is.null(presenceDuration) && is.character(presenceDuration)) {
@@ -99,7 +108,7 @@ loadDetectionData <- function(x,
                        warning('Must have an "end" column for detections to use "auto" detectionType')
                        return(NULL)
                    }
-                   result$detectionType <- inferDetType(result$UTC, result$end)
+                   result$detectionType <- inferDetType(result$UTC, result$end, verbose=verbose)
                },
                'presence' = {
                    if(is.null(presenceDuration)) {
@@ -119,6 +128,9 @@ loadDetectionData <- function(x,
         return(result)
     }
     reqCols <- c('UTC', 'end', 'species', 'detectionType')
+    if(all(reqCols %in% names(x))) {
+        return(x)
+    }
     source <- match.arg(source)
     if(is.character(x) && !file.exists(x)) {
         warning('File ', x, ' does not exist')
@@ -138,7 +150,9 @@ loadDetectionData <- function(x,
             warning('Input does not appear to be Makara data, change "source"')
             return(NULL)
         }
-        result$deployment <- detFileToCode(x)
+        if(is.character(x)) {
+            result$deployment <- detFileToCode(x)
+        }
         extraCols <- c(extraCols, 'call', 'deployment')
         if(is.null(detectedValues)) {
             detectedValues <- 'DETECTED'
@@ -183,6 +197,22 @@ loadDetectionData <- function(x,
                                       quiet=TRUE,
                                       exact=TRUE)
     }
+    if('effortStart' %in% names(result)) {
+        result$effortStart <- parse_date_time(result$effortStart,
+                                      orders=dateFormat,
+                                      truncated = 3,
+                                      tz=tz,
+                                      quiet=TRUE,
+                                      exact=TRUE)
+    }
+    if('effortEnd' %in% names(result)) {
+        result$effortEnd <- parse_date_time(result$effortEnd,
+                                      orders=dateFormat,
+                                      truncated = 3,
+                                      tz=tz,
+                                      quiet=TRUE,
+                                      exact=TRUE)
+    }
     if('duration' %in% names(result) &&
        !'end' %in% names(result)) {
         result$end <- result$UTC + result$duration
@@ -196,7 +226,7 @@ loadDetectionData <- function(x,
                    warning('Must have an "end" column for detections to use "auto" detectionType')
                    return(NULL)
                }
-               result$detectionType <- inferDetType(result$UTC, result$end)
+               result$detectionType <- inferDetType(result$UTC, result$end, verbose=verbose)
            },
            'presence' = {
                if(is.null(presenceDuration)) {
@@ -214,20 +244,26 @@ loadDetectionData <- function(x,
            }
     )
     if(isTRUE(wide)) {
+        if(is.null(speciesCols)) {
+            warning('Must specify which columns contain detection data with',
+                    ' "speciesCols"')
+            return(NULL)
+        }
         if(is.null(detectedValues)) {
             warning('Must specify which values indicate a positive detection',
                     ' with "detectedValues"')
             return(NULL)
-        }
-        if(is.null(speciesCols)) {
-            warning('Must specify which columns contain detection data with',
-                    ' "speciesCols"')
         }
         result <- pivot_longer(result,
                                cols=all_of(speciesCols),
                                values_transform=as.character,
                                names_to='species',
                                values_to='detectedFlag')
+    }
+    if(!'species' %in% names(result)) {
+        warning('Could not find column "species", adjust "columnMap" or',
+                ' use "wide=TRUE" and "speciesCols" if applicable')
+        return(NULL)
     }
     if('detectedFlag' %in% names(result) &&
        !is.null(detectedValues)) {
@@ -245,9 +281,13 @@ getColMaps <- function(which=NULL) {
                         'end' = 'detection_end_datetime',
                         'species' = 'detection_sound_source_code',
                         'call' = 'detection_call_type_code',
+                        'deployment' = 'deployment_code',
                         'detectedFlag' = 'detection_type_code',
+                        'detectedFlag' = 'detection_result_code',
                         'Latitude' = 'detection_latitude',
-                        'Longitude' = 'detection_longitude'
+                        'Longitude' = 'detection_longitude',
+                        'effortStart' = 'analysis_start_datetime',
+                        'effortEnd' = 'analysis_end_datetime'
         ),
         'gen' = list('UTC' = 'StartDate',
                      'project' = 'PROJECT_DESCRIPTION',
@@ -309,6 +349,10 @@ renameToMap <- function(names, map) {
     map <- checkMap(map)
     lowNames <- tolower(names)
     lowOld <- tolower(map$old)
+    if(length(unique(lowOld)) != length(lowOld)) {
+        warning('The same column cannot be mapped to multiple names')
+        return(names)
+    }
     # # in case old and new seem obviously swapped, reverse and redo
     # if(!any(lowOld %in% lowNames) &&
     #    any(tolower(map$new) %in% lowNames)) {
