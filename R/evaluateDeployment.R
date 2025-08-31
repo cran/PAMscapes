@@ -25,8 +25,9 @@
 #'   is typically a large negative number
 #' @param calibration if not \code{NULL}, the frequency dependent calibration
 #'   to apply. Must have "frequency" and "gain" (in dB), can either be a .tf
-#'   file, a CSV file with columns for frequency and gain, or a dataframe with
-#'   columns frequency and gain
+#'   file, a CSV file with columns for frequency and gain, a dataframe with
+#'   columns frequency and gain, or a NetCDF with "frequency" dimension and
+#'   "senstivity" or "gain" variable
 #' @param timeRange if not \code{NULL}, a vector of two POSIXct times identifying
 #'   the expected start and end times of the deployment. If the actual start and
 #'   end times of of the recording files are earlier or later than these, then
@@ -89,8 +90,8 @@ evaluateDeployment <- function(dir,
 
     # wav, log.xml, these are only file types we currently allow
     exts <- '\\.wav|\\.log\\.xml'
-    if(!dir.exists(dir)) {
-        warning('Folder ', dir, ' does not exist')
+    if(any(!dir.exists(dir))) {
+        warning('Folder ', printN(dir[!dir.exists(dir)]), ' does not exist')
         return(NULL)
     }
     if(!is.null(outDir) && !dir.exists(outDir)) {
@@ -133,7 +134,6 @@ evaluateDeployment <- function(dir,
         cat('Analyzing files in', dir, '\n---\n')
         cat('Analyzing project', name, '\n---\n')
     }
-    dirName <- basename(dir)
 
     # only going down one subfolder
     # subDirs <- list.dirs(dir, full.names=TRUE, recursive=FALSE)
@@ -199,13 +199,21 @@ evaluateDeployment <- function(dir,
         endWav <- which.max(wavTimes)
         endHeader <- fastReadWave(wavFiles[endWav], header=TRUE)
         endTime <- wavTimes[endWav] + endHeader$samples / endHeader$sample.rate
-        diffEnd <- as.numeric(difftime(wavTimes[endWav], endTime, units='secs'))
-        if(diffEnd > 1) {
+        diffEnd <- as.numeric(difftime(timeRange[2], endTime, units='secs'))
+        if(diffEnd < -1) {
             warning('Appears Clipping has not happened - last wav file (',
                     basename(wavFiles[endWav]), ') is ', abs(diffEnd),
                     ' seconds after expected end time', immediate. = TRUE)
             return(NULL)
         }
+    }
+    if(is.na(sensitivity) && is.null(calibration)) {
+        warning('Must provide sensitivity or frequency-dependent calibration (or both)')
+        return(NULL)
+    }
+    if(is.na(sensitivity) && !is.null(calibration)) {
+        warning('Sensitivity value not provided with calibration, assumed to be 0')
+        sensitivity <- 0
     }
     if(!is.null(calibration) &&
        is.character(calibration) &&
@@ -370,7 +378,8 @@ fileToTime <- function(x) {
     }
     x <- basename(x)
     x <- file_path_sans_ext(x)
-    format <- c('pamguard', 'pampal', 'soundtrap', 'sm3', 'icListens1', 'icListens2', 'AMAR')
+    format <- c('pamguard', 'pampal', 'soundtrap', 'sm3', 'icListens1', 'icListens2', 
+                'AMAR', 'WISPR', 'PMAR')
     for(f in format) {
         switch(
             f,
@@ -432,6 +441,25 @@ fileToTime <- function(x) {
                 if(!is.na(posix)) {
                     break
                 }
+            },
+            'WISPR' = {
+              # 'WISPR_230504_195202.wav' example
+              date <- gsub('.*_([0-9]{6}_[0-9]{6})$', '\\1', x)
+              posix <- as.POSIXct(date, format='%y%m%d_%H%M%S', tz='UTC')
+              millis <- 0
+              if(!is.na(posix)) {
+                break
+              }
+            },
+            'PMAR' = {
+              # 'template_230411-221029.038.wav' example
+              date <- gsub('.*_([0-9]{6}-[0-9]{6}\\.[0-9]{3})$', '\\1', x)
+              posix <- as.POSIXct(substr(date, 1, 13), tz = 'UTC', format = '%y%m%d-%H%M%S')
+              if(is.na(posix)) next
+              millis <- as.numeric(substr(date, 15, 17)) / 1e3
+              if(!is.na(posix)) {
+                break
+              }
             }
         )
     }

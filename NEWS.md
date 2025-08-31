@@ -1,3 +1,31 @@
+# PAMscapes 0.14.5
+
+- Adding netcdf `calibration` option to `evaluateDeployment` & `evaluateRecordings`
+
+- Adjusting `source='makara'` names for `loadDetectionData` to most recent 
+
+# PAMscapes 0.14.4
+
+- PMAR and WISPR wav file formats added for `evaluateDeployment`
+
+# PAMscapes 0.14.3
+
+- `binSoundscapeData` with `method='mean'` was not linearizing properly
+befre calculation.
+
+- `evaluateDeployment` small bug with `timeRange`
+
+# PAMscapes 0.14.2
+
+- `evaluateDeployment` was not working correctly for separate log and wav
+directories
+
+# PAMscapes 0.14.1
+
+- Fixing `facet` in `plotPSD` to work for year,month,hour
+
+- Updating `runSoundscapeExplorer` to show proper dataframe names in code sample
+
 # PAMScapes 0.14.0
 
 - Adding `matchDetectionData` function for integrating detections wiht
