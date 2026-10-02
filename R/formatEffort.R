@@ -1,8 +1,8 @@
 #' @title Format Detection Effort
-#' 
+#'
 #' @description Format effort data for use in other acoustic detection plotting
 #'   functions. Time ranges will be marked as either "on" or "off" effort
-#'   
+#'
 #' @param effort dataframe with columns \code{start} or \code{effortStart}
 #'   and \code{end} or \code{effortEnd} describing on effort time ranges
 #' @param range if not \code{NULL}, the full extent time ranges to consider for
@@ -15,16 +15,19 @@
 #'   different types of effort that should be tracked separately (e.g. different
 #'   deployment sites or species with different effort)
 #' @param combineYears logical flag to combine all years into a single "year"
-#' 
+#'
 #' @return a dataframe with columns \code{start}, \code{end}, and \code{status}
 #'   which is either "on" or "off", as well as any columns listed in \code{columns}
-#'   
+#'
 #' @author Taiki Sakai \email{taiki.sakai@@noaa.gov}
-#' 
+#'
 #' @export
-#' 
+#'
 #' @importFrom lubridate year floor_date ceiling_date interval union
 #' @importFrom lubridate is.interval int_overlaps int_start int_end day month
+#' @importFrom tidyr unnest
+#' @importFrom data.table rbindlist
+#' @importFrom purrr reduce
 #'
 formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, combineYears=FALSE) {
     if(is.null(effort)) {
@@ -42,22 +45,17 @@ formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, comb
     if('effortEnd' %in% names(effort)) {
         effort <- rename(effort, 'end'='effortEnd')
     }
+
     if(!all(c('start', 'end') %in% names(effort))) {
         warning('Effort must have columns "start" and "end"')
         return(NULL)
     }
+
     if(!inherits(effort$start, 'POSIXct')) {
         effort$start <- parseToUTC(effort$start)
     }
     if(!inherits(effort$end, 'POSIXct')) {
         effort$end <- parseToUTC(effort$end)
-    }
-    startNA <- is.na(effort$start)
-    endNA <- is.na(effort$end)
-    if(sum(startNA | endNA) > 0) {
-        warning(sum(startNA | endNA), ' effort entries had', 
-                ' NA start or end values, they are removed.')
-        effort <- effort[!(startNA | endNA), ]
     }
     # expecting input to only be on-effort times
     if('status' %in% names(effort)) {
@@ -93,7 +91,7 @@ formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, comb
             effort <- bind_rows(effort, newEff)
         }
     }
-    
+
     # need to account for NA vals in columns, e.g. so we can specify effort for one
     # species then all others use general effort
     for(c in columns) {
@@ -102,7 +100,7 @@ formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, comb
     effort <- distinct(
         select(effort, all_of(selectCols))
     )
-    # effort <- arrange(effort, .data$start)
+    effort <- arrange(effort, .data$start)
     effort$interval <- interval(effort$start, effort$end)
     # split by columns
     if(!is.null(columns)) {
@@ -118,24 +116,20 @@ formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, comb
     }
     nDrop <- 0
     nMod <- 0
-    effort <- bind_rows(lapply(split(effort, splitCols), function(x) {
+    effort <- split(effort, splitCols, drop=TRUE)
+    effort <- lapply(effort, function(x) {
         # browser()
         if(nrow(x) == 0) {
             return(x)
         }
         ints <- collapseIntervals(x$interval)
-        result <- data.frame(interval=ints)
-        for(c in columns) {
-            result[[c]] <- x[[c]][1]
-        }
-        result$start <- int_start(result$interval)
-        result$end <- int_end(result$interval)
-        result <- result[c('start', 'end', columns, 'interval')]
-        result <- arrange(result, .data$start)
+
+        result <- data.frame(start = int_start(ints),
+                             end = int_end(ints))
         if(isTRUE(combineYears)) {
             start229 <- is229(result$start)
             end229 <- is229(result$end)
-            
+
             result$start[start229] <- as.POSIXct('2020-03-01 00:00:00', tz='UTC')
             result$end[end229] <- as.POSIXct('2020-03-01 00:00:00', tz='UTC')
             diffs <- as.numeric(difftime(result$end, result$start, units='secs'))
@@ -143,14 +137,14 @@ formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, comb
             start229[dropBoth] <- FALSE
             end229[dropBoth] <- FALSE
             if(any(dropBoth)) {
-                
+
                 nDrop <<- nDrop + sum(dropBoth)
                 result <- result[!dropBoth, ]
                 diffs <- diffs[!dropBoth]
             }
             if(any(start229 | end229)) {
                 nMod <<- nMod + sum(start229 | end229)
-                
+
             }
             year(result$start) <- year(result$start) - 1
             year(result$end) <- year(result$end) - 1
@@ -160,41 +154,55 @@ formatEffort <- function(effort, range=NULL, resolution=NULL, columns=NULL, comb
             return(NULL)
         }
         result$status <- 'on'
+        n <- nrow(result)
+        result$IX <- (1:n) * 2
         offs <- NULL
+        offs <- vector('list', length=4)
         if(nrow(result) > 1) {
             thisOff <- data.frame(
                 start = result$end[1:(nrow(result)-1)],
-                end = result$start[2:nrow(result)]
+                end = result$start[2:nrow(result)],
+                IX = 2 * (1:(n-1)) + 1
             )
             thisOff$status <- 'off'
-            offs <- rbind(offs, thisOff)
+            offs[[1]] <- thisOff
         }
         ### ADD CHECK FOR CUTTONG OFF ON EFFORT??
+        offset <- -1
         if(range[1] < min(result$start)) {
-            thisOff <- data.frame(start=range[1], end=min(result$start), status='off')
-            offs <- rbind(offs, thisOff)
+            thisOff <- data.frame(start=range[1],
+                                  end=min(result$start),
+                                  status='off',
+                                  IX = 1)
+            offs[[2]] <- thisOff
+            offset <- 0
         }
         if(range[2] > max(result$end)) {
-            thisOff <- data.frame(start=max(result$end), end=range[2], status='off')
-            offs <- rbind(offs, thisOff)
+            thisOff <- data.frame(start=max(result$end),
+                                  end=range[2],
+                                  status='off',
+                                  IX = 2*n + 1)
+            offs[[3]] <- thisOff
         }
-        if(!is.null(offs)) {
-            for(c in columns) {
-                offs[[c]] <- x[[c]][1]
-            }
-            offs$interval <- interval(offs$start, offs$end)
-            result <- rbind(result, offs)
-            result <- arrange(result, .data$start)
+        result$interval <- NULL
+        offs[[4]] <- result
+        result <- rbindlist(offs, fill=TRUE, use.names=TRUE)
+        result <- result[result$IX+offset, ]
+        result$IX <- NULL
+        # result <- arrange(result, .data$start)
+        for(c in columns) {
+            result[[c]] <- x[[c]][1]
         }
         result
-    }))
+    })
+    effort <- rbindlist(effort)
+    setDF(effort)
     if(nDrop > 0) {
         warning(nDrop, ' effort entries removed due to leap day (combineYears=TRUE)')
     }
     if(nMod > 0) {
         warning(nMod, ' effort entries modified due to leap day (combineYears=TRUE)')
     }
-    effort$interval <- NULL
     effort
 }
 
@@ -208,15 +216,28 @@ collapseIntervals <- function(x) {
     if(length(x) %in% c(0, 1)) {
         return(x)
     }
+    # checked <- rep(FALSE, length(x))
+    # result <- interval()
     for(i in seq_along(x)) {
+        # if(isTRUE(checked[i])) {
+        #     next
+        # }
         doesIntersect <- int_overlaps(x[i], x)
-        doesIntersect[i] <- FALSE
-        if(any(doesIntersect)) {
-            for(j in which(doesIntersect)) {
-                x[i] <- lubridate::union(x[i], x[j])
-            }
+        # checked[doesIntersect] <- TRUE
+        if(any(doesIntersect[-i])) {
+            # result <- c(result, purrr::reduce(x[doesIntersect], lubridate::union))
+            # x[i] <- purrr::reduce(x[doesIntersect], lubridate::union)
+            x[i] <- interval(start=min(int_start(x[doesIntersect])),
+                             end=max(int_end(x[doesIntersect])))
+            # for(j in which(doesIntersect)) {
+            #     x[i] <- lubridate::union(x[i], x[j])
+            # }
+            doesIntersect[i] <- FALSE
             return(collapseIntervals(x[-which(doesIntersect)]))
         }
+        # if(all(checked)) {
+        #     break
+        # }
     }
     x
 }
@@ -271,12 +292,12 @@ spreadEffort <- function(effort, colVals=NULL, commas=NULL) {
         for(i in which(whichAll)) {
             sameGroup <- effort
             for(o in otherCols) {
-               sameVal <- effort[[o]][i]
-               # jank to make filter below match nothing
-               if(sameVal == 'ALLVALUES') {
-                   sameVal <- 'DONTMATCHME'
-               }
-               sameGroup <- sameGroup[sameGroup[[o]] == sameVal, ] 
+                sameVal <- effort[[o]][i]
+                # jank to make filter below match nothing
+                if(sameVal == 'ALLVALUES') {
+                    sameVal <- 'DONTMATCHME'
+                }
+                sameGroup <- sameGroup[sameGroup[[o]] == sameVal, ]
             }#o
             hasVals <- unique(c(hasVals, sameGroup[[c]]))
             hasVals <- hasVals[hasVals != 'ALLVALUES']
@@ -304,9 +325,10 @@ fillEffortZeroes <- function(x, effort=NULL, resolution, columns) {
     }
     # remove the non-detections before re-adding them later
     x <- x[x$effortDetection != 0, ]
-    if(is.null(effort)) {
+    if(is.null(effort) || resolution == 'detection') {
         return(x)
     }
+    # necessary for binning
     if(!'status' %in% names(effort)) {
         effort <- formatEffort(effort, resolution=resolution, columns=columns,
                                range=c(min(x$UTC), max(x$end)))
@@ -319,7 +341,7 @@ fillEffortZeroes <- function(x, effort=NULL, resolution, columns) {
     bin <- binForSeq(resolution)
     period <- unitToPeriod(resolution)
     offDetections <- 0
-    x <- bind_rows(lapply(split(x, splitCols), function(df) {
+    x <- bind_rows(lapply(split(x, splitCols, drop=TRUE), function(df) {
         if(nrow(df) == 0) {
             return(df)
         }
@@ -342,13 +364,13 @@ fillEffortZeroes <- function(x, effort=NULL, resolution, columns) {
         }
         effSeq <- effSeq[!effSeq %in% df$UTC]
         nOff <- length(effSeq)
-        effDf <- data.frame(UTC=effSeq, 
+        effDf <- data.frame(UTC=effSeq,
                             end=effSeq+period,
                             effortDetection=rep(0, nOff))
         for(col in columns) {
             effDf[[col]] <- rep(df[[col]][1], nOff)
         }
-        
+
         bind_rows(df, effDf)
     }))
     if(offDetections > 0) {
@@ -356,4 +378,84 @@ fillEffortZeroes <- function(x, effort=NULL, resolution, columns) {
                 call. = FALSE)
     }
     x
+}
+
+# makes sure
+checkEffort <- function(x, effort=NULL, columns, matchedOnly=TRUE) {
+    if(is.null(effort) &&
+       all(c('effortStart', 'effortEnd') %in% names(x))) {
+        effort <- distinct(select(x, any_of(c('start'='effortStart', 'end'='effortEnd', columns))))
+    }
+    if(is.null(effort)) {
+        return(NULL)
+    }
+    makaraAnaCols <- c('analysis_start_datetime',
+                       'analysis_end_datetime',
+                       'deployment_code',
+                       'sound_source_codes')
+    if(all(makaraAnaCols %in% names(effort))) {
+        # effort <- effort |>
+        #     mutate(sound_source_codes = strsplit(.data$sound_source_codes, ',')) |>
+        #     unnest(.data$sound_source_codes) |>
+        #     mutate(sound_source_codes = gsub(' ', '', .data$sound_source_codes)) |>
+        #     rename('start' = 'analysis_start_datetime',
+        #            'end' = 'analysis_end_datetime',
+        #            'species' = 'sound_source_codes',
+        #            'deployment' = 'deployment_code') |>
+        #     distinct()
+        effort <- unnest(
+            mutate(effort,
+                   sound_source_codes = strsplit(gsub(' ', '', .data$sound_source_codes), ',')
+            ),
+            .data$sound_source_codes
+        )
+        effort <- distinct(
+            rename(effort,
+                   'start' = 'analysis_start_datetime',
+                   'end' = 'analysis_end_datetime',
+                   'species' = 'sound_source_codes',
+                   'deployment' = 'deployment_code')
+        )
+        naRealtime<- is.na(effort$end) &
+            effort$analysis_processing_code == 'REAL_TIME'
+        if(any(naRealtime)) {
+            warning(sum(naRealtime), ' real-time analyses did not have effort',
+                    ' end times, assuming they are still ongoing')
+            effort$end[naRealtime] <- nowUTC()
+        }
+    }
+    if('effortStart' %in% names(effort)) {
+        effort <- rename(effort, 'start'='effortStart')
+    }
+    if('effortEnd' %in% names(effort)) {
+        effort <- rename(effort, 'end'='effortEnd')
+    }
+
+    if(!all(c('start', 'end') %in% names(effort))) {
+        warning('Effort must have columns "start" and "end"')
+        return(NULL)
+    }
+
+    if(!inherits(effort$start, 'POSIXct')) {
+        effort$start <- parseToUTC(effort$start)
+    }
+    if(!inherits(effort$end, 'POSIXct')) {
+        effort$end <- parseToUTC(effort$end)
+    }
+    startNA <- is.na(effort$start)
+    endNA <- is.na(effort$end)
+    if(sum(startNA | endNA) > 0) {
+        warning(sum(startNA | endNA), ' effort entries had',
+                ' NA start or end values, they are removed.')
+        effort <- effort[!(startNA | endNA), ]
+    }
+    if(isTRUE(matchedOnly)) {
+        for(col in columns) {
+            if(!col %in% names(effort)) {
+                next
+            }
+            effort <- effort[effort[[col]] %in% unique(x[[col]]), ]
+        }
+    }
+    effort
 }

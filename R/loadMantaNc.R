@@ -31,7 +31,7 @@
 #' @importFrom ncdf4 nc_open nc_close ncvar_get ncatt_get
 #' @importFrom sf st_coordinates st_as_sf
 #'
-loadMantaNc <- function(x, keepQuals=c(1), keepEffort=TRUE) {
+loadMantaNc <- function(x, keepQuals=c(1, 2), keepEffort=TRUE) {
     if(!file.exists(x)) {
         message('File ', x, ' does not exist.')
         return(NULL)
@@ -79,9 +79,11 @@ loadMantaNc <- function(x, keepQuals=c(1), keepEffort=TRUE) {
                       '2 (Not evaluated/Unknown)',
                       '3 (Compromised/Questionable)', 
                       '4 (Unusable/Bad)')
-        dqDrop <- qTypes[!qTypes %in% keepQuals]
+        names(dqLevels) <- 1:4
+        dqDrop <- as.character(qTypes[!qTypes %in% keepQuals])
+        dqDrop[dqDrop %in% names(dqLevels)] <- dqLevels[dqDrop[dqDrop %in% names(dqLevels)]]
         if(length(dqDrop) > 0) {
-            message('Data quality flag(s) ', paste0(dqLevels[dqDrop], collapse=', '),
+            message('Data quality flag(s) ', paste0(dqDrop, collapse=', '),
                     ' found in data, corresponding levels marked as NA.')
         }
         dropIx <- matrix(!quality %in% keepQuals, nrow=nrow(quality))
@@ -222,6 +224,7 @@ ncTimeToPosix <- function(vals, units) {
 ymd_hms_fast <- function(x) {
     ords <- c('%Y-%m-%d %H:%M:%S',
               '%Y-%m-%dT%H:%M:%SZ',
+              '%Y-%m-%dT%H:%M:%S%z',
               '%Y/%m/%d %H:%M:%S',
               '%Y-%m-%dT%H:%M:%S')
     parse_date_time(x, orders=ords, truncated=3, exact=TRUE)

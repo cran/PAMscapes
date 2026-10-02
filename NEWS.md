@@ -1,3 +1,57 @@
+# PAMscapes 0.17.2
+
+- General improvements for effort formatting to speed up any effort-based
+plots and data processing
+
+- Adding `matchEffort` and `detectedValue` options to all detection plotting
+functions to be able to more accurately handle effort
+
+- `loadDetectionData` now loads DETECTED and NOT_DETECTED by default for Makara
+data and also reports the number and type loaded when `verbose=TRUE`
+
+# PAMscapes 0.17.1
+
+- Adjustment to how `binDetectionData` handles binning
+
+- Adding frequency slider and stop page to `runDailyLTSAReview`
+
+- `createOctaveLevel` allows for multiple band specifications with `type='bb'`
+
+# PAMscapes 0.17.0
+
+- Adding new `addDataQuality` function for updating data quality matrices in
+soundscape NetCDF files
+
+- Adding more fail catches for `matchGFS`
+
+# PAMscapse 0.16.0
+
+- Adding options `linetype`, `lwd`, `borderLwd`, `showNObs`, `alpha` to `plotPSD`
+
+- Allowing `color` and `linetype` options of `plotPSD` to be named vectors
+for easier assigning of specific values to specific levels
+
+# PAMscapes 0.15.5
+
+- Adding `opendap` option to `matchGFS` to try and use OPeNDAP protocol for
+data access to see if that is any more reliable
+
+# PAMscapes 0.15.4
+
+- `matchGFS` broken again, changing to netcdf3 output format
+
+# PAMscapes 0.15.3
+
+- Adding `quantileBorder` optiont to `plotPSD`
+
+# PAMscapes 0.15.2
+
+- Adding UTC offset capability to `loadSoundscapeData` nc reading
+
+# PAMscapes 0.15.1
+
+- Updating `loadDetectionData` for better Makara interaction
+
 # PAMscapes 0.15.0
 
 - Removing `tdigest` dependency before pending archival of that package

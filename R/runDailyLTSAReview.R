@@ -51,6 +51,9 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
             sliderInput('timeSlider', label='Time Range', 
                         min=0, max=1, value=c(0, 1),
                         width='100%'),
+            sliderInput('freqSlider', label='Frequency Range',
+                        min=0, max=1, value=c(0, 1),
+                        width='100%'),
             fluidRow(
                 column(2, actionButton('addButton', label='Add Annotation')),
                 column(2, selectizeInput('dqValue', label='Quality Flag',
@@ -73,6 +76,13 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
             DTOutput('annoTable'),
             actionButton('removeAnno', label='Remove Annotation'),
             downloadButton('downloadAnno', label='Download Annotations')
+        ),
+        # Stop Page ####
+        tabPanel(
+            'Save and Exit',
+            h4('Download any annotations before hitting "Stop App"'),
+            downloadButton('downloadAnno2', label='Download Annotations'),
+            actionButton('stopApp', label='Stop App', style='font-weight:bold;')
         )
     )
     server <- function(input, output, session) {
@@ -107,6 +117,9 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
         )
         skipPlot <- reactiveVal(1)
         skipDq <- reactiveVal(1)
+        observeEvent(input$stopApp, {
+            stopApp()
+        })
         # Header ####
         output$plotHead <- renderUI({
             tags$h4(paste0('LTSA of file: "', basename(vals$file), '"'),
@@ -115,13 +128,18 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
         plotColors <- c('1'='darkgreen', '2'='steelblue', '3'='yellow', '4'='red')
         observeEvent(vals$data, {
             timeRange <- range(vals$data$UTC)
-            # print(timeRange)
             updateSliderInput(inputId='timeSlider',
                               min=timeRange[1],
                               max=timeRange[2],
                               value=timeRange,
                               timeFormat= '%m-%d %H:%M',
                               timezone='UTC')
+            
+            freqRange <- range(vals$ltsaData$frequency)
+            updateSliderInput(inputId='freqSlider',
+                              min=freqRange[1],
+                              max=freqRange[2],
+                              value=freqRange)
         })
         # Change File ####
         observeEvent(input$fileSelect, {
@@ -137,7 +155,7 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
                 vals$dq <- newDq$dq
                 vals$dqTime <- newDq$time
                 vals$dqFreq <- newDq$freq
-                vals$dqBasePlot <- prepQualityPlot(newDq)
+                vals$dqPlotBase <- prepQualityPlot(newDq)
             }
         })
         # File bttons ####
@@ -163,7 +181,7 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
         output$ltsaPlot <- renderPlot({
             if(isolate(skipPlot() == 1)) {
                 skipPlot(0)
-                invalidateLater(1, session)
+                invalidateLater(100, session)
                 return()
             }
             plotData <- vals$ltsaData
@@ -172,6 +190,9 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
                                    .data$UTC >= input$timeSlider[1],
                                    .data$UTC <= input$timeSlider[2])
             }
+            plotData <- filter(plotData,
+                               .data$frequency >= input$freqSlider[1],
+                               .data$frequency <= input$freqSlider[2])
             # tic('Plot LTSA')
             g <- ggplot(plotData) +
                 geom_rect(aes(xmin=.data$UTC,
@@ -313,14 +334,31 @@ runDailyLTSAReview <- function(file, plotQuality=FALSE) {
                 write.csv(out, file, row.names=FALSE)
             }
         )
-        }
-    runApp(shinyApp(ui=ui, server=server))
+        output$downloadAnno2 <- downloadHandler(
+            filename = function() {
+                'DailyAnnotations.csv'
+            },
+            content = function(file) {
+                out <- bind_rows(vals$annots)
+                out$start <- psxTo8601(out$start)
+                out$end <- psxTo8601(out$end)
+                write.csv(out, file, row.names=FALSE)
+            }
+        )
     }
+    runApp(shinyApp(ui=ui, server=server))
+}
 
 markDQMatrix <- function(dq, freqRange=NULL, timeRange=NULL, value=2, times, freqs) {
     if(is.null(freqRange) &&
        is.null(timeRange)) {
         return(dq)
+    }
+    if(is.data.frame(freqRange)) {
+        annoList <- dfToAnnoList(freqRange)
+        freqRange <- annoList$freqRange
+        timeRange <- annoList$timeRange
+        value <- annoList$quality
     }
     if(!inherits(freqRange, c('NULL', 'list', 'numeric'))) {
         stop('freqRange must be NULL, a list of numeric ranges, or a numeric vector')
@@ -363,18 +401,25 @@ markDQMatrix <- function(dq, freqRange=NULL, timeRange=NULL, value=2, times, fre
     if(nTime == 1) {
         timeRange <- rep(timeRange, maxLen)
     }
-    lowFreq <- freqs[-length(freqs)]
-    highFreq <- freqs[-1]
-    lowTime <- times[-length(times)]
-    highTime <- times[-1]
+    type <- checkFreqType(freqs)                        
+    levs <- getOctaveLevels(type=type, freqRange=range(freqs))
+    lowFreq <- levs$limits[-length(levs$limits)]
+    highFreq <- levs$limits[-1]
+    # lowTime <- times[-length(times)]
+    lowTime <- times
+    # highTime <- times[-1]
+    highTime <- c(times[-1],
+                  times[length(times)] + median(as.numeric(diff(times, units='secs'))))
     for(i in seq_len(maxLen)) {
-        if(is.null(freqRange[[i]])) {
+        if(is.null(freqRange[[i]]) ||
+           all(is.na(freqRange[[i]]))) {
             freqIx <- 1:nrow(dq)
         } else {
             freqIx <- highFreq > freqRange[[i]][1] &
                 lowFreq < freqRange[[i]][2]
         }
-        if(is.null(timeRange[[i]])) {
+        if(is.null(timeRange[[i]]) ||
+           all(is.na(timeRange[[i]]))) {
             timeIx <- 1:ncol(dq)
         } else {
             timeIx <- highTime > timeRange[[i]][1] &
@@ -383,6 +428,25 @@ markDQMatrix <- function(dq, freqRange=NULL, timeRange=NULL, value=2, times, fre
         dq[freqIx, timeIx] <- value[i]
     }
     dq
+}
+
+dfToAnnoList <- function(x) {
+    hasTime <- all(c('start', 'end') %in% names(x))
+    hasFreq <- all(c('freqMin', 'freqMax') %in% names(x))
+    timeRange <- freqRange <- vector('list', length=nrow(x))
+    for(i in seq_len(nrow(x))) {
+        if(hasTime) {
+            timeRange[[i]] <- c(x$start[i], x$end[i])
+        }
+        if(hasFreq) {
+            freqRange[[i]] <- c(x$freqMin[i], x$freqMax[i])
+        }
+        # quality[[i]] <- x$quality[i]
+    }
+    list('freqRange' = freqRange,
+         'timeRange' = timeRange,
+         'quality' = x$quality
+    )
 }
 
 compressDQData <- function(dqLong, doFreq=TRUE) {
@@ -426,6 +490,7 @@ compressDQData <- function(dqLong, doFreq=TRUE) {
 loadQuality <- function(nc) {
     if(is.character(nc)) {
         nc <- nc_open(nc)
+        on.exit(nc_close(nc))
     }
     if(!inherits(nc, 'ncdf4')) {
         warning('Not a NetCDF')

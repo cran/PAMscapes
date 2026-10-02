@@ -15,7 +15,13 @@
 #' @param title optional title to use for the plot
 #' @param bin time bin to use for plotting time axis. Each detection will
 #'   be displayed as covering this amount of time
-#' @param by if not \code{NULL}, column name to facet plot by (e.g. site)
+#' @param detectedValue values in the "detectedFlag" column of \code{x}
+#'   that should be considered positive detections, ignored if that column
+#'   is not in your data. If \code{NULL} then all rows are assumed to be
+#'   positive detections
+#' @param facet if not \code{NULL}, column name to facet plot by (e.g. site)
+#' @param by (deprecated, see \code{facet}) if not \code{NULL}, 
+#'   column name to facet plot by (e.g. site)
 #' @param combineYears logical flag to combine all observations to display
 #'   as a single "year". The year will be set to 2019, and detections falling
 #'   on leap days (February 29th) will be removed
@@ -23,6 +29,12 @@
 #'   be formatted with \link{formatEffort}. Alternatively, if columns
 #'   "effortStart" and "effortEnd" are present in \code{x}, then these will
 #'   be used.
+#' @param matchEffort if \code{TRUE}, only rows of \code{effort} that match
+#'   \code{facet} and \code{typeCol} levels of \code{x} will be included. If 
+#'   \code{FALSE}, all rows of \code{effort} will be assumed to be relevant.
+#'   Typically this should only be \code{FALSE} if there are times of effort
+#'   where there are no detections in \code{x} (and thus no \code{facet} or
+#'   \code{typeCol} level to match to for that instance)
 #' @param scale one of \code{log} or \code{linear}, the frequency scale for
 #'   the plot
 #' @param freqMin optional minimum frequency for plot, useful for log scale
@@ -35,6 +47,7 @@
 #'   dataframe that would normally be used to make the plot will be returned
 #' @param add logical flag if \code{FALSE} plots normally if \code{TRUE}
 #'   then the output can be (maybe) added to an existing ggplot object
+#' @param verbose logical flag to print messages
 #'
 #' @return a ggplot object
 #'
@@ -68,16 +81,20 @@ plotAcousticScene <- function(x,
                               typeCol='species',
                               title=NULL,
                               bin='1day',
+                              detectedValue=NULL,
+                              facet=NULL,
                               by=NULL,
                               combineYears=FALSE,
                               effort=NULL,
+                              matchEffort=TRUE,
                               scale=c('log', 'linear'),
                               freqMin=NULL,
                               freqMax=NULL,
                               fill=TRUE,
                               alpha=1,
                               returnData=FALSE,
-                              add=FALSE) {
+                              add=FALSE,
+                              verbose=TRUE) {
     x <- checkSimple(x, needCols=c('UTC', typeCol))
     # are we niche (frequencies) or presence (same width)
     isPresence <- FALSE
@@ -99,23 +116,25 @@ plotAcousticScene <- function(x,
         scale <- 'linear'
         isPresence <- TRUE
     }
-    if(!is.null(by) &&
-       !by %in% colnames(x)) {
-        warning('"by" column not present in data')
-        by <- NULL
+    if(!is.null(by)) {
+        facet <- by
+        warning('Argument "by" is deprecated, use "facet" instead')
     }
-    if(is.null(effort) &&
-       all(c('effortStart', 'effortEnd') %in% names(x))) {
-        effort <- distinct(select(x, all_of(c('effortStart', 'effortEnd', by, typeCol))))
+    if(!is.null(facet) &&
+       !facet %in% colnames(x)) {
+        warning('"facet" column not present in data')
+        facet <- NULL
     }
-    x <- binDetectionData(x, bin=bin, columns=c(typeCol, by), rematchGPS=FALSE)
+    effort <- checkEffort(x, effort=effort, columns=c(facet, typeCol), matchedOnly=matchEffort)
+    x <- checkPositiveDetections(x, column='detectedFlag', value=detectedValue, verbose=verbose)
+    x <- binDetectionData(x, bin=bin, columns=c(typeCol, facet), rematchGPS=FALSE)
     if(isTRUE(combineYears)) {
         yearDiff <- year(x$end) - year(x$UTC)
         year(x$UTC) <- 2020
         year(x$end) <- 2020 + yearDiff
         start229 <- is229(x$UTC)
         end229 <- is229(x$end)
-
+        
         x$UTC[start229] <- as.POSIXct('2020-03-01 00:00:00', tz='UTC')
         x$end[end229] <- as.POSIXct('2020-03-01 00:00:00', tz='UTC')
         diffs <- as.numeric(difftime(x$end, x$UTC, units='secs'))
@@ -134,7 +153,7 @@ plotAcousticScene <- function(x,
         year(x$UTC) <- year(x$UTC) - 1
         year(x$end) <- year(x$end) - 1
     }
-
+    
     # expand effort from ALLVALUES to multirows
     # join y values to effort
     scale <- switch(match.arg(scale),
@@ -154,16 +173,16 @@ plotAcousticScene <- function(x,
     x$TEMPJOINCOLUMN <- NULL
     # remove detections with no match in map
     x <- x[!is.na(x[['freqMin']]), ]
-    x <- distinct(x[c('UTC', 'end', 'freqMin', 'freqMax', typeCol, by)])
+    x <- distinct(x[c('UTC', 'end', 'freqMin', 'freqMax', typeCol, facet)])
     if(!is.factor(x[[typeCol]])) {
         x[[typeCol]] <- factor(x[[typeCol]], levels=freqMap$type)
     }
     # this is making contiguous start/end sections so that if we dont fill
     # boxes they look right
-    if(is.null(by)) {
+    if(is.null(facet)) {
         splitList <- x[[typeCol]]
     } else {
-        splitList <- list(x[[typeCol]], x[[by]])
+        splitList <- list(x[[typeCol]], x[[facet]])
     }
     x <- bind_rows(lapply(split(x, splitList), function(d) {
         if(is.null(d) | (nrow(d) <= 1)) {
@@ -172,10 +191,10 @@ plotAcousticScene <- function(x,
         d$difftime <- TRUE
         d$difftime[2:nrow(d)] <- d$UTC[2:nrow(d)] != d$end[1:(nrow(d)-1)]
         d$group <- cumsum(d$difftime)
-
+        
         d <- ungroup(
             summarise(
-                group_by(d, across(c('group', typeCol, by, 'freqMin', 'freqMax'))),
+                group_by(d, across(c('group', typeCol, facet, 'freqMin', 'freqMax'))),
                 UTC = min(.data$UTC),
                 end = max(.data$end)
             )
@@ -224,7 +243,7 @@ plotAcousticScene <- function(x,
                       fill=NA,
                       alpha=alpha)
     }
-
+    
     if(isFALSE(add)) {
         if(scale == 'log10') {
             g <- myLog10Scale(g, range=c(freqMin, freqMax), dim='y')
@@ -263,22 +282,16 @@ plotAcousticScene <- function(x,
                   axis.ticks.y = element_blank()) +
             labs(y='')
     }
-    if(!is.null(by)) {
+    if(!is.null(facet)) {
         g <- g +
-            facet_wrap(~ .data[[by]], ncol=1, strip.position='left')
+            facet_wrap(~ .data[[facet]], ncol=1, strip.position='left')
     }
     
     if(!is.null(effort)) {
-        for(col in c(by, typeCol)) {
-            if(!col %in% names(effort)) {
-                next
-            }
-            effort <- effort[effort[[col]] %in% unique(x[[col]]), ]
-        }
         effort <- formatEffort(effort, range=c(min(x$UTC, na.rm=TRUE), max(x$end, na.rm=TRUE)),
-                               resolution=bin, combineYears = combineYears, columns=c(by, typeCol))
-        colVals <- lapply(c(by, typeCol), function(c) unique(x[[c]]))
-        names(colVals) <- c(by, typeCol)
+                               resolution=bin, combineYears = combineYears, columns=c(facet, typeCol))
+        colVals <- lapply(c(facet, typeCol), function(c) unique(x[[c]]))
+        names(colVals) <- c(facet, typeCol)
         effort <- spreadEffort(effort, colVals=colVals)
         # rename to same names as original plot for easy adding
         effort$UTC <- effort$start
